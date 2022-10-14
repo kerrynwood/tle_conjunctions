@@ -188,9 +188,10 @@ if __name__ == '__main__':
     with multiprocessing.Pool( args.cores ) as pool:
         for result in pool.imap_unordered( conjunction_wrapper, conj_jobs ):
             complete += 1
-            print('Found: {}, completed: {:5.2f}'.format(found,100 * complete/total_jobs), end='\r')
+            print('Found: {}, {}/{}: {:5.2f}'.format(found,complete, total_jobs, 100 * complete/total_jobs), end='\r')
             if result is None: continue
             else: found += len( result )
             for record in result:
                 fhandle.write( json.dumps( record ) + '\n')
+    print()
     print()
