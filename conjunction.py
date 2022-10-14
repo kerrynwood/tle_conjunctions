@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import multiprocessing
 import itertools
 import time
-from jdcal import gcal2jd, jd2gcal
+import astropy.time
 import numpy as np
 import itertools
 
@@ -66,7 +66,6 @@ def generate_catalog( tles, jdates, cores, debug=False ):
     return ephem
 
 def conjunction_wrapper( job ):
-    print('this is a job',job)
     cat1, cat2, miss, debug = job 
     return conjunction_job( cat1, cat2, miss )
 
@@ -88,15 +87,17 @@ def conjunction_job( cat1, cat2, miss, buffer=200 ):
     # TODO: !!!! FIX THIS
     idx = np.where( (mindistM <= miss) & (np.abs(tclos) < STEP ) )[0]
     if len(idx) == 0: return None
-    rv = [ (cat1['satnum'], cat2['satnum'], cat1['dates'][I], cat1['dates'][I] + (tclos[I]/86400.), mindistM[I] ) for I in idx ]
-    print(rv)
-    return rv
+    return [ { 'satnum1' : cat1['satnum'],
+               'satnum2' : cat2['satnum'],
+               'tclos'   : cat1['dates'][I] + (tclos[I]/86400.),
+               'miss'    : mindistM[I] } for I in idx ]
 
 
 # =====================================================================================================
 if __name__ == '__main__':
     import sys
     import argparse
+    import json
     DEFAULT_DAYS = 14
 
     # Initialize parser
@@ -115,6 +116,8 @@ if __name__ == '__main__':
             required=False, type=int, dest='step', default=10)
     parser.add_argument('--processes', help='Use multiple cores',
             required=False, type=int, dest='cores', default=1)
+    parser.add_argument('--out', help='Filename to output to',
+            required=False, type=str, dest='outfile', default='./results.out')
     parser.add_argument('--debug', help='Debug output',
             action='store_true' )
 
@@ -134,6 +137,14 @@ if __name__ == '__main__':
         print('Start date : {}  Julian : {}'.format( sdate, sjd) )
         print('End   date : {}  Julian : {}'.format( edate, ejd) )
         print('Cores      : {}'.format( args.cores ) )
+        print('Outfile    : {}'.format( args.outfile ) )
+
+    try: 
+        with open( args.outfile,'w') as F: pass
+    except Exception as e:
+        print('Could not open the outfile, stopping run.  Error was : {}'.format(e))
+        sys.exit()
+
 
     if args.debug : print('Loading cat1 ...', end='', flush=True) 
     tle1 = read_twoline( args.cat1 )
@@ -144,16 +155,16 @@ if __name__ == '__main__':
 
     def filter_too_old( satrec ):
         if abs( satrec.jdsatepoch - sjd ) > 30 : 
-            if args.debug: print('TLE epoch for {} is too far from start epoch : {} start: {}, omitting'.format( 
-                    satrec.satnum, satrec.jdsatepoch, sjd ) )
+            if args.debug: print('TLE epoch is {:10.2f} from start epoch, skipping '.format( 
+                    satrec.satnum, satrec.jdsatepoch - sjd ) )
             return False
         return True
     tle1 = list( filter( filter_too_old, tle1 ) )
     tle2 = list( filter( filter_too_old, tle2 ) )
 
     # ===================================================================================================== DEBUG!!!!!!
-    tle1 = np.random.choice(tle1, 1000, replace=False )
-    tle2 = np.random.choice(tle2, 1000, replace=False )
+    #tle1 = np.random.choice(tle1, 100, replace=False )
+    #tle2 = np.random.choice(tle2, 100, replace=False )
 
     if args.debug:
         print('cat1: {} passed age check'.format(len(tle1)))
@@ -164,14 +175,22 @@ if __name__ == '__main__':
 
     # ---------------------------------------------------------------------------------
     # def generate_catalog( tles, jdates, cores, debug=False ):
-    if args.debug: print('Generating catalog 1...')
+    if args.debug: print('Generating ephemeris for catalog 1...')
     catalog1 = generate_catalog( tle1, jdates, args.cores, args.debug )
-    if args.debug: print('Generating catalog 2...')
+    if args.debug: print('Generating ephemeris for catalog 2...')
     catalog2 = generate_catalog( tle2, jdates, args.cores, args.debug )
 
     # all vs all
     conj_jobs = itertools.product( catalog1.values(), catalog2.values(), [args.miss], [args.debug] )
-    conj_jobs = list( conj_jobs )
+    fhandle   = open( args.outfile, 'w' )
+    total_jobs = len( catalog1.values() ) * len( catalog2.values() )
+    found, complete   = 0,0
     with multiprocessing.Pool( args.cores ) as pool:
         for result in pool.imap_unordered( conjunction_wrapper, conj_jobs ):
-            print(result)
+            complete += 1
+            print('Found: {}, completed: {:5.2f}'.format(found,100 * complete/total_jobs), end='\r')
+            if result is None: continue
+            else: found += len( result )
+            for record in result:
+                fhandle.write( json.dumps( record ) + '\n')
+    print()

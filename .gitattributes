@@ -1,3 +1,4 @@
 catalog22.twoline filter=lfs diff=lfs merge=lfs -text
 catalog_20221001.tle filter=lfs diff=lfs merge=lfs -text
 catalog_20221001.twoline filter=lfs diff=lfs merge=lfs -text
+catalog_20221001_10k.tle filter=lfs diff=lfs merge=lfs -text
