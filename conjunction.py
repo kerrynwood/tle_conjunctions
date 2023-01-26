@@ -178,7 +178,10 @@ if __name__ == '__main__':
     if args.debug: print('Generating ephemeris for catalog 1...')
     catalog1 = generate_catalog( tle1, jdates, args.cores, args.debug )
     if args.debug: print('Generating ephemeris for catalog 2...')
-    catalog2 = generate_catalog( tle2, jdates, args.cores, args.debug )
+    if args.cat1 == args.cat2:
+        catalog2 = catalog1.copy()
+    else:
+        catalog2 = generate_catalog( tle2, jdates, args.cores, args.debug )
 
     # all vs all
     conj_jobs = itertools.product( catalog1.values(), catalog2.values(), [args.miss], [args.debug] )
